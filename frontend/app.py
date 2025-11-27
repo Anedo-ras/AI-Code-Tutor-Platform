@@ -2,6 +2,15 @@ import streamlit as st
 import requests
 import json
 from typing import Optional
+from datetime import datetime
+from io import BytesIO
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, Image
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
+from reportlab.pdfgen import canvas
 
 # Page configuration
 st.set_page_config(
@@ -111,6 +120,226 @@ def analyze_code(file) -> Optional[dict]:
         return None
 
 
+def generate_pdf_report(result: dict, filename: str, code_preview: str = "") -> BytesIO:
+    """Generate a beautiful PDF report"""
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
+    
+    # Container for the 'Flowable' objects
+    elements = []
+    
+    # Define styles
+    styles = getSampleStyleSheet()
+    
+    # Custom styles
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=28,
+        textColor=colors.HexColor('#1E88E5'),
+        spaceAfter=30,
+        alignment=TA_CENTER,
+        fontName='Helvetica-Bold'
+    )
+    
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading2'],
+        fontSize=16,
+        textColor=colors.HexColor('#333333'),
+        spaceAfter=12,
+        spaceBefore=12,
+        fontName='Helvetica-Bold'
+    )
+    
+    subheading_style = ParagraphStyle(
+        'CustomSubHeading',
+        parent=styles['Heading3'],
+        fontSize=12,
+        textColor=colors.HexColor('#666666'),
+        spaceAfter=10,
+        fontName='Helvetica-Bold'
+    )
+    
+    body_style = ParagraphStyle(
+        'CustomBody',
+        parent=styles['BodyText'],
+        fontSize=10,
+        textColor=colors.HexColor('#444444'),
+        spaceAfter=10,
+        alignment=TA_JUSTIFY
+    )
+    
+    # Title
+    elements.append(Paragraph("🎓 AI Code Tutor Platform", title_style))
+    elements.append(Paragraph("Code Analysis Report", styles['Heading2']))
+    elements.append(Spacer(1, 0.3*inch))
+    
+    # Report Info
+    report_info = [
+        ['Report Date:', datetime.now().strftime('%B %d, %Y at %I:%M %p')],
+        ['File Name:', filename],
+        ['Language:', result['language'].title()],
+    ]
+    
+    info_table = Table(report_info, colWidths=[2*inch, 4*inch])
+    info_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f0f0')),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#333333')),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+    ]))
+    elements.append(info_table)
+    elements.append(Spacer(1, 0.3*inch))
+    
+    # Score Section - Eye-catching
+    score = result['score']
+    grade = result['grade']
+    
+    # Determine color based on grade
+    grade_colors = {
+        'A': colors.HexColor('#4CAF50'),
+        'B': colors.HexColor('#2196F3'),
+        'C': colors.HexColor('#FF9800'),
+        'D': colors.HexColor('#FF5722'),
+        'F': colors.HexColor('#F44336')
+    }
+    grade_color = grade_colors.get(grade, colors.grey)
+    
+    score_data = [
+        ['SCORE', 'GRADE'],
+        [f'{score}/100', grade]
+    ]
+    
+    score_table = Table(score_data, colWidths=[3*inch, 3*inch])
+    score_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1E88E5')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 14),
+        ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 1), (-1, 1), 36),
+        ('TEXTCOLOR', (0, 1), (-1, 1), grade_color),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 20),
+        ('TOPPADDING', (0, 0), (-1, -1), 20),
+        ('GRID', (0, 0), (-1, -1), 2, colors.HexColor('#1E88E5')),
+        ('BOX', (0, 0), (-1, -1), 2, colors.HexColor('#1E88E5')),
+    ]))
+    elements.append(score_table)
+    elements.append(Spacer(1, 0.3*inch))
+    
+    # Summary Section
+    elements.append(Paragraph("📝 Analysis Summary", heading_style))
+    summary_text = result.get('analysis_summary', 'No summary available')
+    elements.append(Paragraph(summary_text, body_style))
+    elements.append(Spacer(1, 0.2*inch))
+    
+    # Strengths Section
+    if result.get('strengths'):
+        elements.append(Paragraph("💪 Code Strengths", heading_style))
+        
+        strengths_data = [['#', 'Strength']]
+        for i, strength in enumerate(result['strengths'], 1):
+            strengths_data.append([str(i), strength])
+        
+        strengths_table = Table(strengths_data, colWidths=[0.5*inch, 5.5*inch])
+        strengths_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#28a745')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 11),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f0f9f0')]),
+        ]))
+        elements.append(strengths_table)
+        elements.append(Spacer(1, 0.2*inch))
+    
+    # Errors Section
+    if result.get('errors'):
+        elements.append(Paragraph("⚠️ Errors & Issues", heading_style))
+        
+        errors_data = [['Line', 'Type', 'Message']]
+        for error in result['errors']:
+            errors_data.append([
+                error.get('line', 'N/A'),
+                error.get('type', 'general'),
+                error.get('message', 'Unknown error')
+            ])
+        
+        errors_table = Table(errors_data, colWidths=[0.7*inch, 1.3*inch, 4*inch])
+        errors_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#ffc107')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#333333')),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#fff9e6')]),
+        ]))
+        elements.append(errors_table)
+        elements.append(Spacer(1, 0.2*inch))
+    else:
+        elements.append(Paragraph("⚠️ Errors & Issues", heading_style))
+        elements.append(Paragraph("✅ No errors detected! Great job!", body_style))
+        elements.append(Spacer(1, 0.2*inch))
+    
+    # Recommendations Section
+    if result.get('recommendations'):
+        elements.append(Paragraph("💡 Recommendations", heading_style))
+        
+        rec_data = [['#', 'Recommendation']]
+        for i, rec in enumerate(result['recommendations'], 1):
+            rec_data.append([str(i), rec])
+        
+        rec_table = Table(rec_data, colWidths=[0.5*inch, 5.5*inch])
+        rec_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#17a2b8')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 11),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#e9f7f9')]),
+        ]))
+        elements.append(rec_table)
+        elements.append(Spacer(1, 0.2*inch))
+    
+    # Footer
+    elements.append(Spacer(1, 0.4*inch))
+    footer_style = ParagraphStyle(
+        'Footer',
+        parent=styles['Normal'],
+        fontSize=8,
+        textColor=colors.grey,
+        alignment=TA_CENTER
+    )
+    elements.append(Paragraph("Generated by AI Code Tutor Platform | Helping developers write better code", footer_style))
+    elements.append(Paragraph(f"Report ID: {datetime.now().strftime('%Y%m%d%H%M%S')}", footer_style))
+    
+    # Build PDF
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+
 def main():
     # Header
     st.markdown('<div class="main-header">🎓 AI Code Tutor Platform</div>', unsafe_allow_html=True)
@@ -179,6 +408,8 @@ def main():
                         
                         if result:
                             st.session_state['analysis_result'] = result
+                            st.session_state['filename'] = uploaded_file.name
+                            st.session_state['code_content'] = code_content
                             st.rerun()
         
         with col2:
@@ -247,14 +478,42 @@ def main():
                             unsafe_allow_html=True
                         )
                 
-                # Download report button
-                if st.button("📥 Download Report", use_container_width=True):
-                    report = generate_report(result)
+                # Download report button - NOW GENERATES PDF
+                st.divider()
+                col_a, col_b = st.columns(2)
+                
+                with col_a:
+                    if st.button("📥 Download PDF Report", use_container_width=True, type="primary"):
+                        with st.spinner("📄 Generating beautiful PDF report..."):
+                            pdf_buffer = generate_pdf_report(
+                                result, 
+                                st.session_state.get('filename', 'code_file'),
+                                st.session_state.get('code_content', '')
+                            )
+                            
+                            st.download_button(
+                                label="💾 Save PDF Report",
+                                data=pdf_buffer,
+                                file_name=f"code_analysis_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                                mime="application/pdf",
+                                use_container_width=True
+                            )
+                            st.success("✅ PDF Report generated successfully!")
+                
+                with col_b:
+                    # Also offer JSON for developers who want raw data
+                    json_report = json.dumps({
+                        "analysis_report": result,
+                        "filename": st.session_state.get('filename', 'code_file'),
+                        "timestamp": datetime.now().isoformat()
+                    }, indent=2)
+                    
                     st.download_button(
-                        label="💾 Save Report as JSON",
-                        data=report,
-                        file_name=f"code_analysis_report.json",
-                        mime="application/json"
+                        label="📋 Download JSON (Dev)",
+                        data=json_report,
+                        file_name=f"code_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                        mime="application/json",
+                        use_container_width=True
                     )
             else:
                 st.info("👆 Upload a file and click 'Analyze Code' to see results")
@@ -286,6 +545,7 @@ def main():
             - Error explanations
             - Improvement tips
             - Quality score
+            - Beautiful PDF report
             """)
         
         st.divider()
@@ -298,6 +558,7 @@ def main():
             "AI-Powered": "Uses advanced AI for intelligent recommendations",
             "Scoring System": "Clear grading from A to F",
             "Educational": "Learn best practices and improve skills",
+            "PDF Reports": "Beautiful, professional PDF reports to save and share",
             "Free to Use": "No registration required"
         }
         
@@ -311,15 +572,6 @@ def main():
         Built with ❤️ using FastAPI and Streamlit | AI Code Tutor Platform v1.0
     </div>
     """, unsafe_allow_html=True)
-
-
-def generate_report(result: dict) -> str:
-    """Generate downloadable report"""
-    report = {
-        "analysis_report": result,
-        "timestamp": st.session_state.get('timestamp', 'N/A')
-    }
-    return json.dumps(report, indent=2)
 
 
 if __name__ == "__main__":
