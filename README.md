@@ -1,3 +1,6 @@
+Live Demo: Try the AI Tutor Platform here — an interactive code-analysis tool that evaluates your code, detects errors, and provides intelligent feedback in real time.
+https://ai-code-tutor-platform.streamlit.app/
+
 # 🎓 AI Tutor Platform - MVP
 
 An AI-powered code analysis platform that helps developers learn and improve their code quality through intelligent feedback.
