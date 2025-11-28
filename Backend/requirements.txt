@@ -1,7 +1,9 @@
 fastapi==0.104.1
 uvicorn==0.24.0
 python-multipart==0.0.6
-pydantic==2.5.0
+# Use a Pydantic version that has prebuilt wheels for Python 3.13 to avoid Rust builds
+# (Streamlit Cloud and some hosts use Python 3.13 where older pydantic-core may require compilation)
+pydantic==2.10.4
 python-dotenv==1.0.0
 
 # Optional: For real LLM integration
